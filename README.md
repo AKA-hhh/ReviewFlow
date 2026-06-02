@@ -30,45 +30,41 @@
 
 ```mermaid
 flowchart TD
-    Q["🔍 用户查询"] --> N1
+    Q(["👤 用户输入研究方向"]) --> KW
 
-    subgraph RETRIEVAL["RETRIEVAL · 检索"]
-        N1["extract_keywords"]
-        N2["search_papers"]
-        N3["rank_and_filter"]
+    subgraph R["📥 RETRIEVAL 检索阶段"]
+        KW["🔑 KeywordAgent<br/>LLM 抽取关键词 + 同义词扩展"]
+        SR["📡 SearchAgent<br/>arXiv / PubMed / DBLP 多源并发检索"]
+        RF["📊 RankingAgent<br/>BM25 + Dense 向量双路召回<br/>RRF 融合 → BGE Cross-Encoder 精排"]
     end
 
-    N1 --> N2 --> N3
-    N3 --> D{"should_continue?"}
-    D -->|"YES (≥10篇且≥5篇高相关)"| N4
-    D -->|"NO"| ADJ["adjust_params"] -.->|"loop ≤3"| N1
+    KW --> SR --> RF
 
-    subgraph EXTRACTION["EXTRACTION"]
-        N4["extract_structured"]
+    RF --> D{"🔀 质量检查<br/>论文 ≥ 10 且 高相关 ≥ 5？"}
+
+    D -->|"✅ 通过"| EX
+
+    subgraph A["🧠 AUGMENT 增强阶段"]
+        EX["📄 ExtractionAgent<br/>章节分割 → 相关性评分<br/>层级摘要 → 结构化提取"]
+        AN["📈 AnalysisAgent<br/>时间线 · 主题聚类 · 冲突检测"]
     end
 
-    subgraph ANALYSIS["ANALYSIS"]
-        N5["analyze"]
+    subgraph G["✍️ GENERATE 生成阶段"]
+        GR["✍️ GenerationAgent<br/>大纲规划 → 逐节撰写<br/>引文验证 → 语言润色"]
     end
 
-    subgraph GENERATION["GENERATION"]
-        N6["generate_review"]
-    end
+    EX --> AN --> GR --> OUT(["📄 完整文献综述"])
 
-    N4 --> N5 --> N6 --> OUT["📄 综述输出"]
+    D -->|"❌ 不足"| ADJ["🔄 调参重试<br/>temperature↑ top_p↑<br/>最多 3 轮"] -.-> KW
+
+    R -.->|"读写"| STATE[("🗂️ AgentState<br/>共享状态中心")]
+    A -.->|"读写"| STATE
+    G -.->|"读写"| STATE
+
+    STATE -.->|"持久化"| STORE[("💾 本地存储<br/>ChromaDB + 双层缓存")]
 ```
 
-### 7 个专业 Agent（通过 AgentState 松耦合协作）
-
-| Agent | 节点 | 职责 |
-|-------|------|------|
-| 🔑 KeywordAgent | extract_keywords | LLM 抽取 + NER + Query Expansion |
-| 📡 SearchAgent | search_papers | arXiv/PubMed/DBLP 多源并发检索 |
-| 📊 RankingAgent | rank_and_filter | BM25 + Vector → RRF → BGE 精排 |
-| 📄 ExtractionAgent | extract_structured | 分段切割 + 相关性评分 + 层级摘要 |
-| 📈 AnalysisAgent | analyze | 时间线 + 聚类 + 冲突检测 |
-| ✍️ GenerationAgent | generate_review | 规划 → 撰写 → 引文验证 → 润色 |
-| 🎭 SupervisorAgent | 编排层 | 生命周期管理、条件路由、API 入口 |
+> **7 个专业 Agent 通过 AgentState (TypedDict) 松耦合协作**：上游 Agent 写入结果，下游 Agent 读取所需字段，各 Agent 之间无直接依赖。
 
 <p align="center">
   <img src="docs/images/settings_page.png" alt="设置页面" width="85%">
