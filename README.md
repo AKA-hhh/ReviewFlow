@@ -26,17 +26,6 @@
 
 ---
 
-## 🏗️ 系统架构
-
-```mermaid
-flowchart LR
-    A[用户查询] --> B[关键词提取] --> C[多源检索] --> D[混合排序]
-    D --> E{够?} -->|是| F[结构化提取] --> G[多维分析] --> H[综述生成] --> I[输出]
-    E -->|否| J[调参] -.-> B
-```
-
-> 7 个 Agent 通过 LangGraph StateGraph 编排，AgentState (TypedDict) 松耦合通信，ChromaDB + 双层缓存支撑本地 RAG。
-
 <p align="center">
   <img src="docs/images/settings_page.png" alt="设置页面" width="85%">
   <br><em>▲ 设置页面 — 配置 API、模型、检索参数与检索源</em>
