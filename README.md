@@ -29,42 +29,13 @@
 ## 🏗️ 系统架构
 
 ```mermaid
-flowchart TD
-    Q(["👤 用户输入研究方向"]) --> KW
-
-    subgraph R["📥 RETRIEVAL 检索阶段"]
-        KW["🔑 KeywordAgent<br/>LLM 抽取关键词 + 同义词扩展"]
-        SR["📡 SearchAgent<br/>arXiv / PubMed / DBLP 多源并发检索"]
-        RF["📊 RankingAgent<br/>BM25 + Dense 向量双路召回<br/>RRF 融合 → BGE Cross-Encoder 精排"]
-    end
-
-    KW --> SR --> RF
-
-    RF --> D{"🔀 质量检查<br/>论文 ≥ 10 且 高相关 ≥ 5？"}
-
-    D -->|"✅ 通过"| EX
-
-    subgraph A["🧠 AUGMENT 增强阶段"]
-        EX["📄 ExtractionAgent<br/>章节分割 → 相关性评分<br/>层级摘要 → 结构化提取"]
-        AN["📈 AnalysisAgent<br/>时间线 · 主题聚类 · 冲突检测"]
-    end
-
-    subgraph G["✍️ GENERATE 生成阶段"]
-        GR["✍️ GenerationAgent<br/>大纲规划 → 逐节撰写<br/>引文验证 → 语言润色"]
-    end
-
-    EX --> AN --> GR --> OUT(["📄 完整文献综述"])
-
-    D -->|"❌ 不足"| ADJ["🔄 调参重试<br/>temperature↑ top_p↑<br/>最多 3 轮"] -.-> KW
-
-    R -.->|"读写"| STATE[("🗂️ AgentState<br/>共享状态中心")]
-    A -.->|"读写"| STATE
-    G -.->|"读写"| STATE
-
-    STATE -.->|"持久化"| STORE[("💾 本地存储<br/>ChromaDB + 双层缓存")]
+flowchart LR
+    A[用户查询] --> B[关键词提取] --> C[多源检索] --> D[混合排序]
+    D --> E{够?} -->|是| F[结构化提取] --> G[多维分析] --> H[综述生成] --> I[输出]
+    E -->|否| J[调参] -.-> B
 ```
 
-> **7 个专业 Agent 通过 AgentState (TypedDict) 松耦合协作**：上游 Agent 写入结果，下游 Agent 读取所需字段，各 Agent 之间无直接依赖。
+> 7 个 Agent 通过 LangGraph StateGraph 编排，AgentState (TypedDict) 松耦合通信，ChromaDB + 双层缓存支撑本地 RAG。
 
 <p align="center">
   <img src="docs/images/settings_page.png" alt="设置页面" width="85%">
