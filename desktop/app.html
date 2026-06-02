@@ -1,0 +1,375 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="light">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Noir Scholar · 文献综述系统</title>
+<link rel="stylesheet" href="app.css">
+
+</head>
+<body>
+
+<!-- ===== Sidebar ===== -->
+<aside class="sidebar">
+  <div class="sidebar-brand">
+    <h1>Noir Scholar</h1>
+    <div class="subtitle">Literature Review System</div>
+  </div>
+
+  <div class="segmented-nav">
+    <button id="navGenerate" class="active" onclick="switchPage('generate')">综述生成</button>
+    <button id="navSettings" onclick="switchPage('settings')">系统设置</button>
+  </div>
+
+  <!-- Generate sidebar -->
+  <div id="sidebarGenerate">
+    <div class="sidebar-section">
+      <div class="sidebar-section-label">检索参数</div>
+      <div class="sidebar-field">
+        <label>最大轮数</label>
+        <div class="range-row">
+          <input type="range" id="maxRounds" min="1" max="5" value="1" oninput="updateSlider('roundsVal', this.value)">
+          <span class="range-val" id="roundsVal">1</span>
+        </div>
+      </div>
+      <div class="sidebar-field">
+        <label>候选数/轮</label>
+        <div class="range-row">
+          <input type="range" id="papersPerRound" min="10" max="100" value="30" oninput="updateSlider('papersVal', this.value)">
+          <span class="range-val" id="papersVal">30</span>
+        </div>
+      </div>
+      <div class="sidebar-field">
+        <label>最终使用</label>
+        <div class="range-row">
+          <input type="range" id="finalPapers" min="5" max="50" value="10" oninput="updateSlider('finalVal', this.value)">
+          <span class="range-val" id="finalVal">10</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Language selector -->
+    <div class="sidebar-field">
+      <label>综述语言</label>
+      <select id="reviewLanguage" style="width:100%;padding:6px 8px;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--bg-input);color:var(--text-primary);font-family:var(--font-ui);font-size:0.82rem;cursor:pointer;">
+        <option value="zh">🇨🇳 中文</option>
+        <option value="en">🇺🇸 English</option>
+      </select>
+    </div>
+
+    <button class="btn-generate" id="generateBtn" onclick="startReview()" disabled>✧ 开始生成综述</button>
+  </div>
+
+  <!-- Settings sidebar -->
+  <div id="sidebarSettings" style="display:none">
+    <div class="sidebar-section">
+      <div class="sidebar-section-label">配置</div>
+      <p class="sidebar-settings-hint">
+        在右侧面板中修改 LLM、检索源、输出路径等配置。<br><br>
+        点击 <b style="color:var(--accent);">保存设置</b> 后生效，Web 端与桌面端共享。
+      </p>
+    </div>
+  </div>
+
+  <!-- Recent history -->
+  <div class="sidebar-history" id="sidebarHistory" style="display:none;">
+    <div class="sidebar-section-label">📋 历史记录</div>
+    <div class="history-list" id="historyList"></div>
+  </div>
+
+  <div class="sidebar-footer">
+    <button class="theme-toggle" onclick="toggleTheme()" title="切换主题">
+      <span id="themeIcon">☀</span> 主题
+    </button>
+  </div>
+</aside>
+
+<!-- ===== Main ===== -->
+<div class="main">
+
+  <!-- ===== PAGE: Generate ===== -->
+  <div class="page active" id="pageGenerate">
+    <div class="input-area">
+      <textarea id="queryInput" placeholder="请输入您想综述的研究主题&#10;例如：扩散模型在医学图像分割中的最新进展 / Transformer架构的演进与变体 / 联邦学习中的隐私保护技术综述" oninput="checkInput()"></textarea>
+    </div>
+
+    <!-- Pipeline + Progress -->
+    <div class="pipeline-box" id="pipelineBox">
+      <div class="pipeline" id="pipelineStages">
+        <!-- JS populated -->
+      </div>
+      <div class="progress-bar-wrap">
+        <div class="progress-track"><div class="progress-fill" id="progressBar"></div></div>
+        <span class="progress-label" id="progressText">准备中...</span>
+        <span class="progress-pct" id="progressPct">0%</span>
+      </div>
+    </div>
+
+    <!-- Live log -->
+    <div class="live-log-area" id="liveLogArea">
+      <div class="log-header">📋 实时执行日志</div>
+      <div class="log-body" id="liveLogBody"></div>
+    </div>
+
+    <!-- Empty state -->
+    <div class="empty-state" id="emptyState">
+      <div class="empty-icon">📚</div>
+      <p>输入研究主题，点击左侧按钮开始生成</p>
+    </div>
+
+    <!-- Results -->
+    <div class="result-area" id="resultArea">
+      <div class="stats">
+        <div class="stat-card"><div class="num" id="statRetrieved">-</div><div class="lbl">检索文献</div></div>
+        <div class="stat-card"><div class="num" id="statUsed">-</div><div class="lbl">最终使用</div></div>
+        <div class="stat-card"><div class="num" id="statRounds">-</div><div class="lbl">检索轮数</div></div>
+        <div class="stat-card"><div class="num" id="statClusters">-</div><div class="lbl">主题聚类</div></div>
+        <div class="stat-card"><div class="num" id="statChars">-</div><div class="lbl">综述字数</div></div>
+      </div>
+
+      <div class="tabs" style="display:flex;justify-content:space-between;align-items:center;">
+        <div style="display:flex;">
+          <button class="tab-btn active" onclick="switchResultTab('review')">📄 综述全文</button>
+          <button class="tab-btn" onclick="switchResultTab('analysis')">📊 分析结果</button>
+          <button class="tab-btn" onclick="switchResultTab('papers')">📚 文献列表</button>
+          <button class="tab-btn" onclick="switchResultTab('logs')">📋 执行日志</button>
+        </div>
+        <div id="saveBtnContainer" style="flex-shrink:0;"></div>
+      </div>
+      <div class="tab-content">
+        <div class="tab-panel active" id="panelReview"><p style="color:var(--text-muted);text-align:center;padding:40px">等待生成...</p></div>
+        <div class="tab-panel" id="panelAnalysis"><p style="color:var(--text-muted);text-align:center;padding:40px">等待生成...</p></div>
+        <div class="tab-panel" id="panelPapers"><p style="color:var(--text-muted);text-align:center;padding:40px">等待生成...</p></div>
+        <div class="tab-panel" id="panelLogs"><p style="color:var(--text-muted);text-align:center;padding:40px">等待生成...</p></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== PAGE: Settings ===== -->
+  <div class="page" id="pageSettings">
+    <div class="settings-page">
+      <div class="settings-header">
+        <div>
+          <h2>⚙️ 系统设置</h2>
+          <p class="subtitle">配置修改后点击保存生效 · 与 Web 端共享 config/user_settings.json</p>
+        </div>
+        <div class="settings-header-actions">
+          <span class="header-hint">修改自动保存</span>
+          <button class="btn-secondary btn-sm" onclick="resetSettings()" title="恢复默认设置">恢复默认</button>
+        </div>
+      </div>
+      <div class="settings-body">
+
+      <!-- Pro 模型 -->
+      <div class="setting-group">
+        <h4>🧠 Pro 模型（深度推理）</h4>
+        <div style="display:flex;gap:12px">
+          <div style="flex:1">
+            <label>服务商</label>
+            <select id="setProPreset" onchange="onLLMPreset('pro')">
+              <option value="https://api.deepseek.com">DeepSeek</option>
+              <option value="https://api.openai.com/v1">OpenAI</option>
+              <option value="http://localhost:11434/v1">Ollama (本地)</option>
+              <option value="__custom__">自定义</option>
+            </select>
+          </div>
+          <div style="flex:1">
+            <label>模型名称</label>
+            <input type="text" id="setProModel" placeholder="deepseek-v4-pro">
+          </div>
+        </div>
+        <div id="setProCustomURL" style="display:none;margin-top:8px">
+          <label>Base URL</label>
+          <input type="text" id="setProBaseURL" placeholder="https://api.example.com/v1">
+        </div>
+        <label style="margin-top:8px">API Key</label>
+        <input type="password" id="setProAPIKey" placeholder="sk-...">
+      </div>
+
+      <!-- Flash 模型 -->
+      <div class="setting-group">
+        <h4>⚡ Flash 模型（快速任务）</h4>
+        <div style="display:flex;gap:12px">
+          <div style="flex:1">
+            <label>服务商</label>
+            <select id="setFlashPreset" onchange="onLLMPreset('flash')">
+              <option value="https://api.deepseek.com">DeepSeek</option>
+              <option value="https://api.openai.com/v1">OpenAI</option>
+              <option value="http://localhost:11434/v1">Ollama (本地)</option>
+              <option value="__custom__">自定义</option>
+            </select>
+          </div>
+          <div style="flex:1">
+            <label>模型名称</label>
+            <input type="text" id="setFlashModel" placeholder="deepseek-v4-flash">
+          </div>
+        </div>
+        <div id="setFlashCustomURL" style="display:none;margin-top:8px">
+          <label>Base URL</label>
+          <input type="text" id="setFlashBaseURL" placeholder="https://api.example.com/v1">
+        </div>
+        <label style="margin-top:8px">API Key（留空则复用 Pro Key）</label>
+        <input type="password" id="setFlashAPIKey" placeholder="sk-...">
+
+        <!-- 各阶段模型分配 -->
+        <details style="margin-top:14px;font-size:0.78rem;color:var(--text-secondary);cursor:pointer;">
+          <summary style="font-weight:600;color:var(--accent);">⚡ 各阶段模型分配 (Flash / Pro)</summary>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px;margin-top:10px;" id="stageModels">
+          </div>
+        </details>
+      </div>
+
+      <!-- 检索参数 -->
+      <div class="setting-group">
+        <h4>🔍 检索参数 & 检索源</h4>
+        <div style="display:flex;gap:12px">
+          <div style="flex:1"><label>最大轮数</label><input type="text" id="setMaxRounds" value="1"></div>
+          <div style="flex:1"><label>候选数/轮</label><input type="text" id="setPapersPerRound" value="30"></div>
+          <div style="flex:1"><label>最终使用</label><input type="text" id="setFinalPapers" value="10"></div>
+        </div>
+        <label style="margin-top:10px">检索源（点击切换）</label>
+        <div class="checkbox-row" id="sourceChips">
+          <span class="chip checked" data-src="arxiv" onclick="toggleChip(this)">arXiv</span>
+          <span class="chip checked" data-src="semantic_scholar" onclick="toggleChip(this)">Semantic Scholar</span>
+          <span class="chip" data-src="pubmed" onclick="toggleChip(this)">PubMed</span>
+          <span class="chip" data-src="dblp" onclick="toggleChip(this)">DBLP</span>
+        </div>
+      </div>
+
+      <!-- 本地模型 -->
+      <div class="setting-group">
+        <h4>🧩 本地模型</h4>
+        <div style="display:flex;gap:12px">
+          <div style="flex:1">
+            <label>Embedding 向量模型</label>
+            <select id="setEmbedding" onchange="onModelSelect()">
+              <option value="BAAI/bge-small-zh-v1.5" data-id="BAAI/bge-small-zh-v1.5">BGE Small 中文 (~92MB)</option>
+              <option value="BAAI/bge-large-zh-v1.5" data-id="BAAI/bge-large-zh-v1.5">BGE Large 中文 (~650MB)</option>
+              <option value="BAAI/bge-small-en-v1.5" data-id="BAAI/bge-small-en-v1.5">BGE Small 英文 (~130MB)</option>
+              <option value="BAAI/bge-micro-v2" data-id="BAAI/bge-micro-v2">BGE Micro 超轻量 (~17MB)</option>
+              <option value="sentence-transformers/all-MiniLM-L6-v2" data-id="sentence-transformers/all-MiniLM-L6-v2">MiniLM 英文 (~80MB)</option>
+              <option value="intfloat/multilingual-e5-small" data-id="intfloat/multilingual-e5-small">E5 Small 多语言 (~120MB)</option>
+            </select>
+            <span id="embeddingStatus" style="font-size:0.68rem;color:var(--text-muted);margin-top:4px;display:block;"></span>
+          </div>
+          <div style="flex:1">
+            <label>Reranker 重排序模型</label>
+            <select id="setReranker" onchange="onModelSelect()">
+              <option value="BAAI/bge-reranker-v2-m3" data-id="BAAI/bge-reranker-v2-m3">BGE Reranker V2 M3 推荐 (~2.2GB)</option>
+              <option value="BAAI/bge-reranker-base" data-id="BAAI/bge-reranker-base">BGE Reranker Base (~440MB)</option>
+              <option value="BAAI/bge-reranker-v2-minicpm-layerwise" data-id="BAAI/bge-reranker-v2-minicpm-layerwise">BGE Reranker MiniCPM 轻量 (~120MB)</option>
+              <option value="cross-encoder/ms-marco-MiniLM-L-4-v2" data-id="cross-encoder/ms-marco-MiniLM-L-4-v2">MiniLM 超轻量 (~25MB)</option>
+            </select>
+            <span id="rerankerStatus" style="font-size:0.68rem;color:var(--text-muted);margin-top:4px;display:block;"></span>
+          </div>
+        </div>
+        <div id="modelDownloadBtn" style="margin-top:8px;display:none;">
+          <button class="btn-secondary btn-sm" id="btnDownloadModel" onclick="downloadSelectedModel()">⬇ 下载模型</button>
+        </div>
+        <!-- 全流程模型映射表（与 Streamlit 一致） -->
+        <details style="margin-top:12px;font-size:0.72rem;color:var(--text-secondary);cursor:pointer;">
+          <summary style="font-weight:500;color:var(--accent);">📋 各流程使用的模型 & 预计耗时</summary>
+          <table class="flow-table" style="margin-top:8px">
+            <tr><th>流程步骤</th><th>使用的模型</th><th style="text-align:center">位置</th><th style="text-align:center">⏱ 耗时</th></tr>
+            <tr><td>Jieba 分词</td><td>jieba (算法)</td><td style="text-align:center">CPU</td><td style="text-align:center">&lt;1s</td></tr>
+            <tr><td>关键词提取与打分</td><td id="flow-stage-keyword_extraction">⚡ Flash</td><td style="text-align:center">云端</td><td style="text-align:center">3-8s</td></tr>
+            <tr><td>多源学术检索</td><td>HTTP API</td><td style="text-align:center">网络</td><td style="text-align:center">15-45s</td></tr>
+            <tr><td>PDF 全文下载与章节切分</td><td>pypdf (算法)</td><td style="text-align:center">CPU</td><td style="text-align:center">2-10s</td></tr>
+            <tr><td>BM25 关键词检索</td><td>rank_bm25 (算法)</td><td style="text-align:center">CPU</td><td style="text-align:center">1-3s</td></tr>
+            <tr><td>向量语义检索</td><td id="flow-full-emb">-</td><td style="text-align:center">GPU</td><td style="text-align:center">2-5s</td></tr>
+            <tr><td>RRF 多路融合排序</td><td>RRF (算法)</td><td style="text-align:center">CPU</td><td style="text-align:center">&lt;1s</td></tr>
+            <tr><td>CrossEncoder 精细重排序</td><td id="flow-full-rerank">-</td><td style="text-align:center">GPU</td><td style="text-align:center">3-10s</td></tr>
+            <tr><td>论文相关性评分</td><td id="flow-stage-relevance_scoring">⚡ Flash</td><td style="text-align:center">云端</td><td style="text-align:center">10-20s</td></tr>
+            <tr><td>论文结构化信息抽取</td><td id="flow-stage-structured_extraction">🧠 Pro</td><td style="text-align:center">云端</td><td style="text-align:center">20-60s</td></tr>
+            <tr><td>时间线/演进分析</td><td id="flow-stage-timeline_analysis">🧠 Pro</td><td style="text-align:center">云端</td><td style="text-align:center">5-15s</td></tr>
+            <tr><td>研究主题聚类</td><td id="flow-stage-topic_clustering">🧠 Pro</td><td style="text-align:center">云端</td><td style="text-align:center">5-15s</td></tr>
+            <tr><td>观点冲突检测</td><td id="flow-stage-conflict_detection">🧠 Pro</td><td style="text-align:center">云端</td><td style="text-align:center">5-15s</td></tr>
+            <tr><td>综述章节规划</td><td id="flow-stage-chapter_planning">⚡ Flash</td><td style="text-align:center">云端</td><td style="text-align:center">5-15s</td></tr>
+            <tr><td>综述正文撰写</td><td id="flow-stage-review_writing">🧠 Pro</td><td style="text-align:center">云端</td><td style="text-align:center">30-90s</td></tr>
+            <tr><td>引文真实性校验</td><td id="flow-stage-citation_checking">⚡ Flash</td><td style="text-align:center">云端</td><td style="text-align:center">10-20s</td></tr>
+            <tr><td>综述润色与格式化</td><td id="flow-stage-polishing">⚡ Flash</td><td style="text-align:center">云端</td><td style="text-align:center">10-20s</td></tr>
+            <tr style="font-weight:600;color:var(--accent)"><td>合计</td><td colspan="2"></td><td style="text-align:center">≈ 2-6 分钟</td></tr>
+          </table>
+        </details>
+      </div>
+
+      <!-- 输出配置 -->
+      <div class="setting-group">
+        <h4>💾 输出配置</h4>
+        <label>综述保存目录</label>
+        <input type="text" id="setOutputDir" placeholder="D:\project\ResearchPaper\output">
+      </div>
+
+      <!-- 自定义检索源 -->
+      <div class="setting-group">
+        <h4>🔧 自定义检索源</h4>
+        <div id="customSourcesList"><p style="font-size:0.78rem;color:var(--text-muted);">暂无自定义检索源</p></div>
+        <button class="btn-secondary" onclick="openAddSourceModal()">＋ 添加检索源</button>
+      </div>
+
+      </div>  <!-- .settings-body -->
+    </div>
+  </div>
+
+</div>
+
+<!-- Add Source Modal -->
+<div class="modal-overlay" id="addSourceModal">
+  <div class="modal-box">
+    <div class="modal-box-header">
+      <h3>＋ 添加自定义检索源</h3>
+    </div>
+    <div class="modal-box-body">
+      <label>API 预设（可选）</label>
+      <select id="modalPreset" onchange="onPresetSelect()">
+        <option value="">-- 自定义 --</option>
+        <option value="openalex">OpenAlex（免费，推荐）</option>
+        <option value="crossref">Crossref（免费）</option>
+      </select>
+      <label>检索源名称</label>
+      <input type="text" id="modalSourceName" placeholder="例如：OpenAlex">
+      <label>API 端点 URL</label>
+      <input type="text" id="modalSourceUrl" placeholder="https://api.example.com">
+      <details style="margin-top:10px;font-size:0.78rem;">
+        <summary style="cursor:pointer;color:var(--accent);font-weight:500;">⚙ 高级参数（API 路径映射）</summary>
+        <label>搜索路径（如 /works）</label>
+        <input type="text" id="modalSearchPath" value="/search" placeholder="/search">
+        <div style="display:flex;gap:8px;">
+          <div style="flex:1"><label>查询参数名</label><input type="text" id="modalQueryParam" value="q" placeholder="q"></div>
+          <div style="flex:1"><label>限制参数名</label><input type="text" id="modalLimitParam" value="limit" placeholder="limit"></div>
+        </div>
+        <label>结果路径（JSON 中数据数组的位置，如 data / results / data.items）</label>
+        <input type="text" id="modalResultsPath" value="data" placeholder="data">
+      </details>
+      <label>API Key（可选）</label>
+      <input type="text" id="modalSourceKey" placeholder="留空则无需认证">
+      <div class="modal-test-result" id="modalTestResult"></div>
+    </div>
+    <div class="modal-box-footer">
+      <button class="btn-secondary" onclick="closeAddSourceModal()">取消</button>
+      <button class="btn-secondary" id="modalTestBtn" onclick="testCustomSource()">🔍 检测连接</button>
+      <button class="btn-primary" id="modalAddBtn" onclick="addCustomSource()" disabled>＋ 添加</button>
+    </div>
+  </div>
+</div>
+
+<!-- Confirm Modal -->
+<div class="modal-overlay" id="confirmModal">
+  <div class="modal-box" style="width:360px;text-align:center;">
+    <div class="modal-box-header"><h3>确认删除</h3></div>
+    <div class="modal-box-body">
+      <p id="confirmModalMsg" style="color:var(--text-secondary);font-size:0.9rem;"></p>
+    </div>
+    <div class="modal-box-footer" style="justify-content:center;">
+      <button class="btn-secondary" onclick="cancelDelete()">取消</button>
+      <button class="btn-primary" onclick="confirmDelete()" style="background:var(--error);">确认删除</button>
+    </div>
+  </div>
+</div>
+
+<!-- Toast container -->
+<div class="toast-container" id="toastContainer"></div>
+
+<script src="app.js"></script>
+</body>
+</html>

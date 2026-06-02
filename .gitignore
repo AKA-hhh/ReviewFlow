@@ -1,0 +1,30 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+
+# Local runtime data (generated at runtime, do not commit)
+cache/
+chroma_data/
+logs/
+output/
+
+# Downloaded models (large files, install separately)
+models/
+
+# Generated file (auto-assembled at first run)
+desktop/app_full.html
+
+# Environment (contains API keys)
+.env
+
+# OS
+.DS_Store
+Thumbs.db

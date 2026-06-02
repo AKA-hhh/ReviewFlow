@@ -1,0 +1,27 @@
+你是一位学术领域分析专家。请识别以下文献之间的观点冲突和方法论差异。
+
+文献列表（含方法、实验、结论）：
+{papers_json}
+
+分析要求：
+1. 识别直接冲突的结论（不同论文对同一问题得出不同结论）
+2. 识别方法论争议（对哪种方法更优的争论）
+3. 识别待解决问题（现有研究尚未达成共识的领域）
+
+请以 JSON 格式输出：
+{{
+    "conflicts": [
+        {{
+            "type": "conclusion/methodology/open_question",
+            "description": "冲突描述",
+            "involved_papers": ["paper_id_1", "paper_id_2"],
+            "positions": [
+                {{"paper_id": "...", "position": "该论文的立场"}}
+            ],
+            "resolution_status": "resolved/unresolved/partially_resolved"
+        }}
+    ],
+    "open_questions": [
+        "领域内尚未解决的开放性问题"
+    ]
+}}
